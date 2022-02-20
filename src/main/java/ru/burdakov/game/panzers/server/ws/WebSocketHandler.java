@@ -1,43 +1,59 @@
 package ru.burdakov.game.panzers.server.ws;
 
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.JsonValue;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.adapter.standard.StandardWebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 @Component
 public class WebSocketHandler extends AbstractWebSocketHandler {
 
-    private final Array<WebSocketSession> sessions = new Array<>();
+    private final Array<StandardWebSocketSession> sessions = new Array<>();
 
     private ConnectListener connectListener;
     private DisconnectListener disconnectListener;
     private MessageListener messageListener;
 
+    private final ObjectMapper mapper;
+
+    public WebSocketHandler(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
+
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        StandardWebSocketSession standardWebSocketSession = (StandardWebSocketSession) session;
         synchronized (sessions) {
-            sessions.add(session);
+            sessions.add(standardWebSocketSession);
+            connectListener.handle(standardWebSocketSession);
         }
-        connectListener.handle(session);
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        messageListener.handleMessage(session, message.getPayload());
+        StandardWebSocketSession standardWebSocketSession = (StandardWebSocketSession) session;
+
+        String payload = message.getPayload();
+        JsonNode jsonNode = mapper.readTree(payload);
+        messageListener.handleMessage(standardWebSocketSession, jsonNode);
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+        StandardWebSocketSession standardWebSocketSession = (StandardWebSocketSession) session;
         synchronized (sessions) {
-            sessions.removeValue(session, true);
+            sessions.removeValue(standardWebSocketSession, true);
+            disconnectListener.handle(standardWebSocketSession);
         }
-        disconnectListener.handle(session);
     }
 
-    public Array<WebSocketSession> getSessions() {
+    public Array<StandardWebSocketSession> getSessions() {
         return sessions;
     }
 
